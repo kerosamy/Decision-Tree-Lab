@@ -15,10 +15,11 @@ class DecisionTree:
             self.gain = gain
             self.samples = samples
 
-    def __init__(self, max_depth=10, min_samples_split=2, min_impurity_decrease=0.0):
+    def __init__(self, max_depth=10, min_samples_split=2, min_impurity_decrease=0.0, max_features=None):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.min_impurity_decrease = min_impurity_decrease
+        self.max_features = max_features
         self.root = None
 
     def fit(self, X, y):
@@ -26,7 +27,6 @@ class DecisionTree:
         self.y = np.array(y)
         self.root = self._build_tree(self.X, self.y)
 
-    # TREE BUILDING
     def _build_tree(self, X, y, depth=0):
 
         if len(y) == 0:
@@ -44,7 +44,6 @@ class DecisionTree:
 
         best_feature, best_value, is_cat, best_gain = self._best_split(X, y)
 
-        # no valid split or weak split
         if best_feature is None or best_gain < self.min_impurity_decrease:
             return self.Node(
                 value=self._most_common_label(y),
@@ -52,7 +51,6 @@ class DecisionTree:
                 samples={int(c): int(np.sum(y == c)) for c in np.unique(y)}
             )
 
-        # split data
         if is_cat:
             left_idx = X[:, best_feature] == best_value
         else:
@@ -76,7 +74,6 @@ class DecisionTree:
                          gain=best_gain,
                          samples=samples)
 
-    # BEST SPLIT (INFORMATION GAIN)
     def _best_split(self, X, y):
 
         best_gain = -1
@@ -87,7 +84,21 @@ class DecisionTree:
         parent_entropy = self._entropy(y)
         n_samples, n_features = X.shape
 
-        for feature in range(n_features):
+        # Feature sampling for Random Forest
+        if self.max_features is None:
+            feature_indices = np.arange(n_features)
+        elif self.max_features == "sqrt":
+            n_sub = int(np.sqrt(n_features))
+            feature_indices = np.random.choice(n_features, n_sub, replace=False)
+        elif self.max_features == "log2":
+            n_sub = int(np.log2(n_features + 1))
+            feature_indices = np.random.choice(n_features, n_sub, replace=False)
+        elif isinstance(self.max_features, int):
+            feature_indices = np.random.choice(n_features, min(self.max_features, n_features), replace=False)
+        else:
+            feature_indices = np.arange(n_features)
+
+        for feature in feature_indices:
             values = X[:, feature]
             unique_vals = np.unique(values)
             is_numeric = False
@@ -123,7 +134,7 @@ class DecisionTree:
                         best_is_cat = True
 
         return best_feature, best_value, best_is_cat, best_gain
-    
+
     def _information_gain(self, feature_values, y, threshold, parent_entropy, is_numeric=True):
 
         if is_numeric:
@@ -146,7 +157,6 @@ class DecisionTree:
 
         return parent_entropy - child_entropy
 
-    # ENTROPY
     def _entropy(self, y):
         classes = np.unique(y)
         entropy = 0
@@ -159,14 +169,13 @@ class DecisionTree:
         values, counts = np.unique(y, return_counts=True)
         return values[np.argmax(counts)]
 
-    # PREDICT
     def predict(self, X):
         X = np.array(X)
         predictions = []
         for x in X:
             pred = self._traverse(x, self.root)
             predictions.append(pred)
-            
+
         return np.array(predictions)
 
     def _traverse(self, x, node):
