@@ -14,7 +14,7 @@ if __name__ == "__main__":
     print("Train:", X_train.shape)
     print("Val:  ", X_val.shape)
     print("Test: ", X_test.shape)
-    tree = DecisionTree(max_depth=10, min_samples_split=2)
+    tree = DecisionTree(max_depth=100, min_samples_split=2, min_impurity_decrease=0.01)
     tree.fit(X_train, y_train)
 
     y_val_pred = tree.predict(X_val)
@@ -27,4 +27,6 @@ if __name__ == "__main__":
     print("Test Results:")
     evaluate_model(tree, X_test, y_test)
     plot_confusion_matrix(y_test, y_test_pred, title="Test Confusion Matrix")
+    dot = tree.plot_tree(X_train.columns.tolist())
+    dot.render("tree", format="png", view=True)
    

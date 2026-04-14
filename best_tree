@@ -1,0 +1,76 @@
+digraph {
+	2154801720800 [label="ST_Slope == Up
+IG = 0.3070
+entropy = 0.9919
+samples = {0: 287, 1: 355}" fillcolor="#f0f0f0" style=filled]
+	2154801420464 [label="ChestPainType == ASY
+IG = 0.1490
+entropy = 0.6913
+samples = {0: 220, 1: 50}" fillcolor="#f0f0f0" style=filled]
+	2154801720800 -> 2154801420464 [label=True]
+	2154760428128 [label="Oldpeak <= 0.400
+IG = 0.1150
+entropy = 0.9877
+samples = {0: 52, 1: 40}" fillcolor="#f0f0f0" style=filled]
+	2154801420464 -> 2154760428128 [label=True]
+	2154801409120 [label="Leaf
+class = 0
+entropy = 0.8832
+samples = {0: 44, 1: 19}" fillcolor="#a6cee3" style=filled]
+	2154760428128 -> 2154801409120 [label=True]
+	2154801660752 [label="Leaf
+class = 1
+entropy = 0.8498
+samples = {0: 8, 1: 21}" fillcolor="#fb9a99" style=filled]
+	2154760428128 -> 2154801660752 [label=False]
+	2154802031952 [label="Cholesterol <= 149.000
+IG = 0.0822
+entropy = 0.3121
+samples = {0: 168, 1: 10}" fillcolor="#f0f0f0" style=filled]
+	2154801420464 -> 2154802031952 [label=False]
+	2154801424160 [label="Leaf
+class = 0
+entropy = 0.9852
+samples = {0: 8, 1: 6}" fillcolor="#a6cee3" style=filled]
+	2154802031952 -> 2154801424160 [label=True]
+	2154802035312 [label="Leaf
+class = 0
+entropy = 0.1654
+samples = {0: 160, 1: 4}" fillcolor="#a6cee3" style=filled]
+	2154802031952 -> 2154802035312 [label=False]
+	2154801715424 [label="ChestPainType == ASY
+IG = 0.0837
+entropy = 0.6803
+samples = {0: 67, 1: 305}" fillcolor="#f0f0f0" style=filled]
+	2154801720800 -> 2154801715424 [label=False]
+	2154760282112 [label="Cholesterol <= 139.000
+IG = 0.0427
+entropy = 0.4418
+samples = {0: 24, 1: 238}" fillcolor="#f0f0f0" style=filled]
+	2154801715424 -> 2154760282112 [label=True]
+	2154760278896 [label="Leaf
+class = 1
+entropy = -0.0000
+samples = {1: 69}" fillcolor="#fb9a99" style=filled]
+	2154760282112 -> 2154760278896 [label=True]
+	2154760281344 [label="Leaf
+class = 1
+entropy = 0.5417
+samples = {0: 24, 1: 169}" fillcolor="#fb9a99" style=filled]
+	2154760282112 -> 2154760281344 [label=False]
+	2154801720368 [label="MaxHR <= 136.000
+IG = 0.1018
+entropy = 0.9654
+samples = {0: 43, 1: 67}" fillcolor="#f0f0f0" style=filled]
+	2154801715424 -> 2154801720368 [label=False]
+	2154801723344 [label="Leaf
+class = 1
+entropy = 0.6962
+samples = {0: 9, 1: 39}" fillcolor="#fb9a99" style=filled]
+	2154801720368 -> 2154801723344 [label=True]
+	2154801715808 [label="Leaf
+class = 0
+entropy = 0.9932
+samples = {0: 34, 1: 28}" fillcolor="#a6cee3" style=filled]
+	2154801720368 -> 2154801715808 [label=False]
+}
