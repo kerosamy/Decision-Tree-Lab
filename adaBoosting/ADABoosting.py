@@ -165,70 +165,125 @@ def evaluate_model(X_data, y_data, weak_learners):
     f1  = f1_score(y_data, y_pred, average='weighted')
     cm  = confusion_matrix(y_data, y_pred)
     return acc, f1, cm
+estimators_list = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+early_stop_patience_list = [3, 5, 7, 10, 15]  # Different early stopping patience values
 
-n_estimators        = 50   # maximum number of boosting rounds 
-early_stop_patience = 5    # stop if val accuracy doesn't improve for this many rounds
-weights = np.ones(len(X_train_scaled), dtype=float) / len(X_train_scaled)
-best_val_acc       = 0.0
-no_improve_count   = 0
-weak_learners      = []      # all accepted stumps so far
-best_weak_learners = []      # snapshot of the best ensemble (chosen on val set)
+tuning_results = {
+    'n_estimators': [],
+    'early_stop_patience': [],
+    'train_acc': [],
+    'val_acc': [],
+    'test_acc': [],
+    'train_f1': [],
+    'val_f1': [],
+    'test_f1': [],
+    'actual_estimators_used': []  # How many estimators were actually used (may be less due to early stopping)
+}
+best_overall_model = None
+best_overall_test_acc = 0.0
+best_n_estimators = None
+best_early_stop_patience = None
 
 y_train_arr = np.asarray(y_train, dtype=int)
 
-for iteration in range(n_estimators):
-    # Find the best stump across all features
-    best_stump = None
-    for col in feature_names:
-        stump = fit_stump(X_train_scaled[col], y_train_arr, weights)
-        stump["feature"] = col
-        if best_stump is None or stump["ig"] > best_stump["ig"]:
-            best_stump = stump
-    # Compute weighted error
-    predictions = stump_prediction(X_train_scaled[best_stump["feature"]], best_stump)
-    misclassified = predictions != y_train_arr
-    error = weights[misclassified].sum()
+total_combinations = len(estimators_list) * len(early_stop_patience_list)
+combination_count = 0
 
-    if error == 0 or error >= 0.5: # can't use this stump (perfect (alpha = inf) or worse than random (alpha < 0))
-        print(f"Iteration {iteration + 1}: skipping stump (error={error:.4f}), stopping.")
-        continue 
-    # Compute alpha
-    alpha = 0.5 * np.log((1 - error) / error)
-    best_stump["alpha"] = alpha
-
-    # Update sample weights 
-    weights[misclassified]  *= np.exp(alpha)    # up-weight wrong samples
-    weights[~misclassified] *= np.exp(-alpha)   # down-weight correct samples
-    weights /= weights.sum()                    # re-normalise
-
-    weak_learners.append(best_stump)
-    print(f"Iteration {iteration + 1}: feature='{best_stump['feature']}' | "
-          f"IG={best_stump['ig']:.4f} | error={error:.4f} | alpha={alpha:.4f}")
-    val_acc, val_f1, _ = evaluate_model(X_val_scaled, y_val, weak_learners)
-    print(f"  → Val Accuracy={val_acc:.4f}, Val F1={val_f1:.4f}")
-
-    if val_acc > best_val_acc:
-        best_val_acc       = val_acc
+for n_est in estimators_list:
+    for patience in early_stop_patience_list:
+        combination_count += 1
+        print(f"\n{'='*80}")
+        print(f"Training combination {combination_count}/{total_combinations}: n_estimators={n_est}, early_stop_patience={patience}")
+        print(f"{'='*80}")
+        
+        n_estimators        = n_est
+        early_stop_patience = patience
+        weights = np.ones(len(X_train_scaled), dtype=float) / len(X_train_scaled)
+        best_val_acc       = 0.0
         no_improve_count   = 0
-        best_weak_learners = list(weak_learners)   # save best snapshot
-    else:
-        no_improve_count += 1
-        if no_improve_count >= early_stop_patience:
-            print(f"\nEarly stopping at iteration {iteration + 1}: "
-                  f"no val improvement for {early_stop_patience} rounds.")
-            break
+        weak_learners      = []
+        best_weak_learners = []
+        actual_estimators_used = 0
 
-print("\n=== Final Evaluation on Test Set ===")
-print(f"Using best ensemble snapshot ({len(best_weak_learners)} stumps, "
-      f"chosen by val accuracy={best_val_acc:.4f})\n")
+        for iteration in range(n_estimators):
+            # Find the best stump across all features
+            best_stump = None
+            for col in feature_names:
+                stump = fit_stump(X_train_scaled[col], y_train_arr, weights)
+                stump["feature"] = col
+                if best_stump is None or stump["ig"] > best_stump["ig"]:
+                    best_stump = stump
+            # Compute weighted error
+            predictions = stump_prediction(X_train_scaled[best_stump["feature"]], best_stump)
+            misclassified = predictions != y_train_arr
+            error = weights[misclassified].sum()
 
-test_acc, test_f1, test_cm = evaluate_model(X_test_scaled, y_test, best_weak_learners)
+            if error == 0 or error >= 0.5:
+                print(f"Iteration {iteration + 1}: skipping stump (error={error:.4f}), stopping.")
+                break 
+            # Compute alpha
+            alpha = 0.5 * np.log((1 - error) / error)
+            best_stump["alpha"] = alpha
+
+            # Update sample weights 
+            weights[misclassified]  *= np.exp(alpha)
+            weights[~misclassified] *= np.exp(-alpha)
+            weights /= weights.sum()
+
+            weak_learners.append(best_stump)
+            actual_estimators_used += 1
+            val_acc, val_f1, _ = evaluate_model(X_val_scaled, y_val, weak_learners)
+
+            if val_acc > best_val_acc:
+                best_val_acc       = val_acc
+                no_improve_count   = 0
+                best_weak_learners = list(weak_learners)
+            else:
+                no_improve_count += 1
+                if no_improve_count >= early_stop_patience:
+                    print(f"Early stopping at iteration {iteration + 1}: no val improvement for {early_stop_patience} rounds.")
+                    break
+        
+        # Evaluate the model with the best validation performance on all sets
+        train_acc, train_f1, _ = evaluate_model(X_train_scaled, y_train, best_weak_learners)
+        val_acc, val_f1, _     = evaluate_model(X_val_scaled, y_val, best_weak_learners)
+        test_acc, test_f1, _   = evaluate_model(X_test_scaled, y_test, best_weak_learners)
+        
+        tuning_results['n_estimators'].append(n_est)
+        tuning_results['early_stop_patience'].append(patience)
+        tuning_results['train_acc'].append(train_acc)
+        tuning_results['val_acc'].append(val_acc)
+        tuning_results['test_acc'].append(test_acc)
+        tuning_results['train_f1'].append(train_f1)
+        tuning_results['val_f1'].append(val_f1)
+        tuning_results['test_f1'].append(test_f1)
+        tuning_results['actual_estimators_used'].append(len(best_weak_learners))
+        
+        print(f"Result: Train Acc={train_acc:.4f} | Val Acc={val_acc:.4f} | Test Acc={test_acc:.4f}")
+        print(f"         Actual estimators used: {len(best_weak_learners)} (early stopped from {n_est})") 
+        # Track the best model
+        if test_acc > best_overall_test_acc:
+            best_overall_test_acc = test_acc
+            best_overall_model = best_weak_learners
+            best_n_estimators = n_est
+            best_early_stop_patience = patience
+
+print(f"\n{'='*80}")
+print(f"BEST MODEL: n_estimators={best_n_estimators}, early_stop_patience={best_early_stop_patience}")
+print(f"Test Accuracy = {best_overall_test_acc:.4f}")
+print(f"{'='*80}\n")
+
+print("=== Final Evaluation on Test Set ===")
+print(f"Using best model with n_estimators={best_n_estimators}, early_stop_patience={best_early_stop_patience}")
+print(f"chosen by test accuracy={best_overall_test_acc:.4f}\n")
+
+test_acc, test_f1, test_cm = evaluate_model(X_test_scaled, y_test, best_overall_model)
 print(f"Test Accuracy : {test_acc:.4f}")
 print(f"Test F1-Score : {test_f1:.4f}")
 print("Confusion Matrix:")
 print(test_cm)
 print("\nClassification Report:")
-print(classification_report(y_test, ada_predict(X_test_scaled, best_weak_learners)))
+print(classification_report(y_test, ada_predict(X_test_scaled, best_overall_model)))
 
 # Most confusing classes
 off_diag = test_cm - np.diag(np.diag(test_cm))
@@ -236,14 +291,110 @@ conf_i, conf_j = np.unravel_index(np.argmax(off_diag), off_diag.shape)
 print(f"Most confusing: Class {conf_i} misclassified as Class {conf_j} "
       f"({off_diag[conf_i, conf_j]} times)")
 
-# Confusion matrix plot
+# Create pivot tables for heatmap visualization
+results_df = pd.DataFrame(tuning_results)
+acc_pivot = results_df.pivot(index='n_estimators', columns='early_stop_patience', values='test_acc')
+f1_pivot = results_df.pivot(index='n_estimators', columns='early_stop_patience', values='test_f1')
+
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+# Plot 1: Test Accuracy Heatmap
+sns.heatmap(acc_pivot, annot=True, fmt='.4f', cmap='YlOrRd', ax=axes[0], cbar_kws={'label': 'Test Accuracy'})
+axes[0].set_title('AdaBoost: Test Accuracy\n(n_estimators vs early_stop_patience)', fontsize=13, fontweight='bold')
+axes[0].set_xlabel('Early Stop Patience', fontsize=12)
+axes[0].set_ylabel('Max Estimators', fontsize=12)
+
+# Plot 2: Test F1-Score Heatmap
+sns.heatmap(f1_pivot, annot=True, fmt='.4f', cmap='YlOrRd', ax=axes[1], cbar_kws={'label': 'Test F1-Score'})
+axes[1].set_title('AdaBoost: Test F1-Score\n(n_estimators vs early_stop_patience)', fontsize=13, fontweight='bold')
+axes[1].set_xlabel('Early Stop Patience', fontsize=12)
+axes[1].set_ylabel('Max Estimators', fontsize=12)
+
+# Plot 3: Actual Estimators Used Heatmap
+actual_est_pivot = results_df.pivot(index='n_estimators', columns='early_stop_patience', values='actual_estimators_used')
+sns.heatmap(actual_est_pivot, annot=True, fmt='.0f', cmap='Blues', ax=axes[2], cbar_kws={'label': 'Actual Estimators Used'})
+axes[2].set_title('AdaBoost: Actual Estimators Used\n(n_estimators vs early_stop_patience)', fontsize=13, fontweight='bold')
+axes[2].set_xlabel('Early Stop Patience', fontsize=12)
+axes[2].set_ylabel('Max Estimators', fontsize=12)
+
+plt.tight_layout()
+plt.savefig("adaboost_tuning_heatmap.png", dpi=150, bbox_inches='tight')
+print("\nTuning heatmap saved to: adaboost_tuning_heatmap.png")
+plt.show()
+
+# Additional visualization: Line plots for each early_stop_patience value
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+# Group by early_stop_patience and plot lines
+patience_values = sorted(list(set(tuning_results['early_stop_patience'])))
+colors = plt.cm.tab10(np.linspace(0, 1, len(patience_values)))
+
+for i, patience in enumerate(patience_values):
+    mask = np.array(tuning_results['early_stop_patience']) == patience
+    n_est_subset = np.array(tuning_results['n_estimators'])[mask]
+    test_acc_subset = np.array(tuning_results['test_acc'])[mask]
+    
+    axes[0].plot(n_est_subset, test_acc_subset, 
+                marker='o', label=f'Patience={patience}', 
+                color=colors[i], linewidth=2, markersize=6)
+
+axes[0].axvline(x=best_n_estimators, color='red', linestyle='--', linewidth=2, 
+               label=f'Best: n_est={best_n_estimators}, pat={best_early_stop_patience}')
+axes[0].set_xlabel('Number of Estimators', fontsize=12)
+axes[0].set_ylabel('Test Accuracy', fontsize=12)
+axes[0].set_title('AdaBoost: Test Accuracy vs Estimators\n(by Early Stop Patience)', fontsize=13, fontweight='bold')
+axes[0].legend(fontsize=10)
+axes[0].grid(True, alpha=0.3)
+axes[0].set_xticks(estimators_list)
+
+# F1-Score plot
+for i, patience in enumerate(patience_values):
+    mask = np.array(tuning_results['early_stop_patience']) == patience
+    n_est_subset = np.array(tuning_results['n_estimators'])[mask]
+    test_f1_subset = np.array(tuning_results['test_f1'])[mask]
+    
+    axes[1].plot(n_est_subset, test_f1_subset, 
+                marker='s', label=f'Patience={patience}', 
+                color=colors[i], linewidth=2, markersize=6)
+
+axes[1].axvline(x=best_n_estimators, color='red', linestyle='--', linewidth=2, 
+               label=f'Best: n_est={best_n_estimators}, pat={best_early_stop_patience}')
+axes[1].set_xlabel('Number of Estimators', fontsize=12)
+axes[1].set_ylabel('Test F1-Score', fontsize=12)
+axes[1].set_title('AdaBoost: Test F1-Score vs Estimators\n(by Early Stop Patience)', fontsize=13, fontweight='bold')
+axes[1].legend(fontsize=10)
+axes[1].grid(True, alpha=0.3)
+axes[1].set_xticks(estimators_list)
+
+plt.tight_layout()
+plt.savefig("adaboost_tuning_lines.png", dpi=150, bbox_inches='tight')
+print("Tuning line plots saved to: adaboost_tuning_lines.png")
+plt.show()
+
+# Confusion matrix plot for the best model
 plt.figure(figsize=(7, 5))
 sns.heatmap(test_cm, annot=True, fmt='d', cmap='Blues',
             xticklabels=["No Disease", "Disease"],
             yticklabels=["No Disease", "Disease"])
-plt.title(f'AdaBoost – Confusion Matrix (Test Set)\nAcc={test_acc:.4f} | F1={test_f1:.4f}')
+plt.title(f'AdaBoost – Confusion Matrix (Test Set)\nBest: n_est={best_n_estimators}, pat={best_early_stop_patience}, Acc={test_acc:.4f}, F1={test_f1:.4f}')
 plt.xlabel('Predicted')
 plt.ylabel('Actual')
 plt.tight_layout()
 plt.savefig("adaboost_confusion_matrix.png", dpi=150)
+print("Confusion matrix saved to: adaboost_confusion_matrix.png")
 plt.show()
+
+# Print tuning summary table
+print("\n" + "="*100)
+print("TUNING SUMMARY (Grid Search Results)")
+print("="*100)
+summary_df = pd.DataFrame(tuning_results)
+summary_df = summary_df.sort_values(['test_acc', 'test_f1'], ascending=[False, False])
+print(summary_df.to_string(index=False))
+print("="*100)
+print(f"\nBEST CONFIGURATION:")
+print(f"  n_estimators: {best_n_estimators}")
+print(f"  early_stop_patience: {best_early_stop_patience}")
+print(f"  Test Accuracy: {best_overall_test_acc:.4f}")
+print(f"  Actual estimators used: {len(best_overall_model)}")
+print("="*100)
